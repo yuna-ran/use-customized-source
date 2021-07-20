@@ -119,7 +119,7 @@ async function join() {
     [ options.uid, localTracks.videoTrack ] = await Promise.all([
       // Join the channel.
       client.join(options.appid, options.channel, options.token || null, options.uid || null),
-      // Create tracks to the localcamera.
+      // Create tracks to the local camera.
       AgoraRTC.createCameraVideoTrack()
     ]);
 
@@ -135,7 +135,7 @@ async function join() {
       } catch (e) {
         console.log(error);
       }
-      //specify mozCaptureStream for Firefox.
+      //determine mozCaptureStream for Firefox.
       var videoStream = (navigator.userAgent.indexOf("Firefox") > -1)? videoFromDiv.mozCaptureStream():videoFromDiv.captureStream();
       [ options.uid, localTracks.videoTrack ] = await Promise.all([
         // Join the channel.
@@ -156,8 +156,22 @@ async function join() {
 /*
  * Stop all local and remote tracks then leave the channel.
  */
-
 async function stopCurrentChannel() {
+  var track = localTracks.videoTrack;
+    if(track) {
+     track.stop();
+     track.close();
+     localTracks.videoTrack = undefined;
+   }
+
+  // Remove remote users and player views.
+  $("#local-player-name").text("");
+
+  // unpublish the video track
+  await client.unpublish(localTracks["videoTrack"]);
+}
+async function leave() {
+  
   for (trackName in localTracks) {
     var track = localTracks[trackName];
     if(track) {
@@ -170,38 +184,41 @@ async function stopCurrentChannel() {
   // Remove remote users and player views.
   remoteUsers = {};
   $("#remote-playerlist").html("");
-  $("#local-player-name").text("");
 
   // leave the channel
   await client.leave();
-  console.log("client leaves channel success");
-}
-async function leave() {
-  
-  await stopCurrentChannel();
+
+  $("#local-player-name").text("");
   $("#join").attr("disabled", false);
   $("#leave").attr("disabled", true);
   $("#switch-channel").attr("disabled", true);
+  console.log("client leaves channel success");
 }
 
 /*
- *
+ * Switch to another channel
  */
  async function switchChannel() {
-  console.log("switchChannel entered");
   let prev = currentStream;
   currentStream = $("#stream-source").val();
-
-  if (currentStream == prev) {
-    console.log("no change from " + prev + " to" + currentStream);
-  } else if (currentStream != prev){
+  if (prev != currentStream) {
     console.log("channel is switched from " + prev + " to" + currentStream);
-    await stopCurrentChannel().then(join());
-   //await join();
-    //TO-DO
-  }
- }
+    await stopCurrentChannel().then(async function(){
+      if (currentStream != "camera") {
+      var videoFromDiv = document.getElementById("sample-video");
+        videoFromDiv.play();
+        var videoStream = (navigator.userAgent.indexOf("Firefox") > -1)? videoFromDiv.mozCaptureStream() : videoFromDiv.captureStream();
+        localTracks.videoTrack = await await AgoraRTC.createCustomVideoTrack({mediaStreamTrack:videoStream.getVideoTracks()[0]});
+      } else {
+        localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack();
+      }
+      await client.publish(localTracks.videoTrack);
+      localTracks.videoTrack.play("local-player");
 
+    }); 
+    $("#local-player-name").text(`localVideo(${options.uid})`);
+  }
+}
 
 /*
  * Add the local use to a remote channel.
